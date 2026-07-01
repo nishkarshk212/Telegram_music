@@ -52,8 +52,11 @@ class XBitAPI:
                     if url_key in info and info[url_key]:
                         direct_url = info[url_key]
                         print(f"Successfully got direct URL for {vid_id} using XBit API, downloading...")
+                        headers = {}
+                        if self.xbit_api_key and "xbitcode.com" in direct_url:
+                            headers["x-api-key"] = self.xbit_api_key
                         async with aiohttp.ClientSession() as session:
-                            async with session.get(direct_url, timeout=300) as response:
+                            async with session.get(direct_url, headers=headers, timeout=300) as response:
                                 if response.status == 200:
                                     with open(path, "wb") as f:
                                         async for chunk in response.content.iter_chunked(1024 * 1024):
