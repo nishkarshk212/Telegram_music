@@ -211,10 +211,11 @@ async def play_hndlr(
         # Verify local file
         if file.file_path and not (file.file_path.startswith("http") or file.file_path.startswith("https")):
             if not Path(file.file_path).exists() or Path(file.file_path).stat().st_size == 0:
+                from pyrogram.enums import ButtonStyle
                 key = buttons.ikm([
                     [
-                        buttons.ikb(text=m.lang["support"], url=config.SUPPORT_CHAT),
-                        buttons.ikb(text=m.lang["channel"], url=config.SUPPORT_CHANNEL),
+                        buttons.ikb(text=m.lang["support"], url=config.SUPPORT_CHAT, style=ButtonStyle.PRIMARY),
+                        buttons.ikb(text=m.lang["channel"], url=config.SUPPORT_CHANNEL, style=ButtonStyle.SUCCESS),
                     ]
                 ])
                 return await sent.edit_text(m.lang["error_no_file"].format(config.SUPPORT_CHAT), reply_markup=key)
