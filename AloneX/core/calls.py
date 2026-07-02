@@ -11,7 +11,7 @@ from pyrogram.types import InputMediaPhoto, Message
 from pytgcalls import PyTgCalls, exceptions, types 
 from pytgcalls.pytgcalls_session import PyTgCallsSession 
 
-from AloneX.helpers import Media, Track, buttons, dynamic_buttons, thumb 
+from AloneX.helpers import Media, Track, buttons, thumb 
 
 
 class TgCall(PyTgCalls): 
@@ -38,8 +38,6 @@ class TgCall(PyTgCalls):
             await db.remove_call(chat_id) 
         except: 
             pass 
-
-
 
     async def play_media( 
         self, 
@@ -115,8 +113,6 @@ class TgCall(PyTgCalls):
                         ), 
                         reply_markup=keyboard, 
                     )
-                    # Start dynamic color cycling for this playing message
-                    await dynamic_buttons.start_color_cycle(chat_id, media.message_id, keyboard)
                 except MessageIdInvalid: 
                     media.message_id = (await app.send_photo( 
                         chat_id=chat_id, 
@@ -124,9 +120,7 @@ class TgCall(PyTgCalls):
                         caption=text, 
                         reply_markup=keyboard, 
                         has_spoiler=True, 
-                    )).id
-                    # Start dynamic color cycling for this playing message
-                    await dynamic_buttons.start_color_cycle(chat_id, media.message_id, keyboard) 
+                    )).id 
         except FileNotFoundError as e: 
             logger.error(f"[play_media] FileNotFoundError: {e}, file: {media.file_path}") 
             key = buttons.ikm([
@@ -280,6 +274,11 @@ class TgCall(PyTgCalls):
                             try:
                                 await app.delete_messages(chat_id, media.message_id)
                             except:
+
+        try: 
+            await client.leave_call(chat_id, close=False) 
+        except: 
+            pass
                                 pass
                     await self.play_next(chat_id)
             elif isinstance(update, types.ChatUpdate):

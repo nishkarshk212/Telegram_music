@@ -229,14 +229,6 @@ async def play_hndlr(
                 return await sent.edit_text(m.lang["error_no_file"].format(config.SUPPORT_CHAT), reply_markup=key)
 
     await anon.play_media(chat_id=m.chat.id, message=sent, media=file)
-    # Send song suggestions in background (don't block playback)
-    async def _do_suggest():
-        try:
-            from AloneX.plugins.suggestions import send_suggestions
-            await send_suggestions(m.chat.id, file.title)
-        except Exception:
-            pass
-    asyncio.create_task(_do_suggest())
     if not tracks:
         return
     added = playlist_to_queue(m.chat.id, tracks, m.from_user.id)
