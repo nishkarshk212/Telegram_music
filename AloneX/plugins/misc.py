@@ -8,7 +8,7 @@ import time
 
 from pyrogram import enums, errors, filters, types
 
-from AloneX import anon, app, config, db, lang, queue, tasks, userbot, yt
+from AloneX import anon, app, config, db, lang, queue, tasks, userbot, xbit, yt
 from AloneX.helpers import buttons
 
 
@@ -74,7 +74,7 @@ async def update_timer(length=10):
                 if remaining <= 30:
                     next = queue.get_next(chat_id, check=True)
                     if next and not next.file_path:
-                        next.file_path = await yt.download(next.id, video=next.video)
+                        next.file_path = await xbit.download(next.id, video=next.video)
 
                 if remaining < 10:
                     remove = True
