@@ -2,9 +2,9 @@
 # Deployment script for Telegram Music Bot
 # This script deploys the latest code to the server
 
-SERVER_IP="140.245.56.100"
+SERVER_IP="165.245.190.41"
 SERVER_USER="root"
-SERVER_PASS="Akshay343402355468"
+SERVER_PASS="SuJFDFG3HD"
 SERVER_PORT="22"
 REPO_URL="https://github.com/nishkarshk212/Telegram_music"
 BOT_DIR="/root/Telegram_music"
