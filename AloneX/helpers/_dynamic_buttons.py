@@ -4,40 +4,33 @@
 # ALONE-CODER
 
 import asyncio
-import random
-from pyrogram.enums import ButtonStyle
 from pyrogram import types
 
 from AloneX import app, db, logger
 
 
 class DynamicButtons:
-    """Manages continuously changing button colors for playing messages."""
+    """Manages continuously changing button emojis for playing messages."""
     
     def __init__(self):
         self.active_tasks = {}  # chat_id -> task
-        self.current_colors = {}  # chat_id -> current color index
+        self.current_emoji_index = {}  # chat_id -> current emoji index
+        # Color emojis to cycle through
+        self.color_emojis = ["🔴", "🟠", "🟡", "🟢", "🔵", "🟣", "🟤", "⚪", "🌈"]
     
     async def start_color_cycle(self, chat_id: int, message_id: int, original_markup: types.InlineKeyboardMarkup):
-        """Start a background task to cycle button colors every 5 seconds."""
+        """Start a background task to cycle button emojis every 5 seconds."""
         if chat_id in self.active_tasks:
             return  # Already running
         
-        self.current_colors[chat_id] = 0
+        self.current_emoji_index[chat_id] = 0
         task = asyncio.create_task(
             self._color_cycle_task(chat_id, message_id, original_markup)
         )
         self.active_tasks[chat_id] = task
     
     async def _color_cycle_task(self, chat_id: int, message_id: int, original_markup: types.InlineKeyboardMarkup):
-        """Background task that updates button colors every 5 seconds."""
-        colors = [
-            ButtonStyle.PRIMARY,
-            ButtonStyle.SUCCESS, 
-            ButtonStyle.DANGER,
-            ButtonStyle.DEFAULT
-        ]
-        
+        """Background task that updates button emojis every 5 seconds."""
         try:
             while True:
                 await asyncio.sleep(5)
@@ -47,12 +40,12 @@ class DynamicButtons:
                     await self.stop_color_cycle(chat_id)
                     break
                 
-                # Cycle through colors
-                self.current_colors[chat_id] = (self.current_colors[chat_id] + 1) % len(colors)
-                current_color = colors[self.current_colors[chat_id]]
+                # Cycle through emojis
+                self.current_emoji_index[chat_id] = (self.current_emoji_index[chat_id] + 1) % len(self.color_emojis)
+                current_emoji = self.color_emojis[self.current_emoji_index[chat_id]]
                 
-                # Rebuild markup with new colors
-                new_markup = self._rebuild_markup_with_color(original_markup, current_color)
+                # Rebuild markup with new emojis
+                new_markup = self._rebuild_markup_with_emoji(original_markup, current_emoji)
                 
                 try:
                     await app.edit_message_reply_markup(
@@ -61,17 +54,15 @@ class DynamicButtons:
                         reply_markup=new_markup
                     )
                 except Exception as e:
-                    logger.debug(f"[DynamicButtons] Failed to update colors for {chat_id}: {e}")
+                    logger.debug(f"[DynamicButtons] Failed to update emojis for {chat_id}: {e}")
                     await self.stop_color_cycle(chat_id)
                     break
                     
         except asyncio.CancelledError:
             pass
     
-    def _rebuild_markup_with_color(self, markup: types.InlineKeyboardMarkup, color: ButtonStyle) -> types.InlineKeyboardMarkup:
-        """Rebuild inline keyboard with specified button color."""
-        from AloneX.helpers import buttons
-        
+    def _rebuild_markup_with_emoji(self, markup: types.InlineKeyboardMarkup, emoji: str) -> types.InlineKeyboardMarkup:
+        """Rebuild inline keyboard with emoji prefix while preserving all properties."""
         new_rows = []
         for row in markup.inline_keyboard:
             new_row = []
@@ -80,17 +71,30 @@ class DynamicButtons:
                 if btn.url or btn.copy_text:
                     new_row.append(btn)
                 else:
-                    # Apply new color to callback buttons
+                    # Add emoji prefix to callback button text
+                    # Check if text already has an emoji prefix
+                    text = btn.text
+                    if text and not text[0] in self.color_emojis:
+                        # Add emoji prefix for control buttons
+                        if any(char in text for char in ['▷', 'II', '⥁', '‣‣I', '▢']):
+                            text = f"{emoji} {text}"
+                    
                     new_row.append(
-                        buttons.ikb(
-                            text=btn.text,
+                        types.InlineKeyboardButton(
+                            text=text,
                             callback_data=btn.callback_data,
-                            style=color
+                            url=btn.url,
+                            switch_inline_query=btn.switch_inline_query,
+                            switch_inline_query_current_chat=btn.switch_inline_query_current_chat,
+                            callback_game=btn.callback_game,
+                            pay=btn.pay,
+                            login_url=btn.login_url,
+                            web_app=btn.web_app,
                         )
                     )
             new_rows.append(new_row)
         
-        return buttons.ikm(new_rows)
+        return types.InlineKeyboardMarkup(inline_keyboard=new_rows)
     
     async def stop_color_cycle(self, chat_id: int):
         """Stop the color cycle for a chat."""
@@ -100,8 +104,8 @@ class DynamicButtons:
                 task.cancel()
             del self.active_tasks[chat_id]
         
-        if chat_id in self.current_colors:
-            del self.current_colors[chat_id]
+        if chat_id in self.current_emoji_index:
+            del self.current_emoji_index[chat_id]
 
 
 # Global instance
