@@ -57,7 +57,7 @@ async def track_time():
 
 async def update_timer(length=10):
     while True:
-        await asyncio.sleep(7)
+        await asyncio.sleep(5)
         for chat_id in list(db.active_calls):
             if not await db.playing(chat_id):
                 continue
