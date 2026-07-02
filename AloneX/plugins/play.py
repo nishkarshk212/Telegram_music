@@ -193,7 +193,15 @@ async def play_hndlr(
             # Check cache first
             cache = await db.get_media_cache(file.id)
             if cache:
-                file.file_path = cache.get("video_url") if video else cache.get("audio_url")
+                cached_path = cache.get("video_url") if video else cache.get("audio_url")
+                # Only use cached path if it's a URL or if the local file exists
+                if cached_path and (cached_path.startswith("http") or cached_path.startswith("https")):
+                    file.file_path = cached_path
+                elif cached_path and Path(cached_path).exists() and Path(cached_path).stat().st_size > 0:
+                    file.file_path = cached_path
+                else:
+                    # Cache is invalid, clear it
+                    await db.delete_media_cache(file.id)
             
             if not file.file_path:
                 await sent.edit_text(m.lang["play_downloading"])
