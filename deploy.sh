@@ -14,7 +14,12 @@ echo "=== Deploying Telegram Music Bot to $SERVER_IP ==="
 # First, make sure we have sshpass installed
 if ! command -v sshpass &> /dev/null
 then
-    echo "sshpass not found, but we'll proceed with manual steps if needed"
+    echo "sshpass not found, installing..."
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        brew install sshpass
+    else
+        sudo apt-get install -y sshpass
+    fi
 fi
 
 echo "Step 1: Connecting to server and updating code..."
@@ -37,7 +42,13 @@ sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no -p $SERVER_PORT $SERVE
     echo "Step 2: Installing dependencies..."
     pip3 install -U -r requirements.txt
     
-    echo "Step 3: Restarting the bot..."
+    echo "Step 3: Checking logs before restart..."
+    if [ -f "bot.log" ]; then
+        echo "=== Last 50 lines of bot.log ==="
+        tail -50 bot.log
+    fi
+    
+    echo "Step 4: Restarting the bot..."
     # Kill any running bot processes (adjust as needed)
     pkill -f "python3 -m AloneX" || true
     pkill -f "bash start" || true
@@ -49,6 +60,12 @@ sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no -p $SERVER_PORT $SERVE
     echo "Starting bot in background..."
     nohup bash start > bot.log 2>&1 &
     echo "Bot started successfully! Check bot.log for output"
+    
+    echo "Step 5: Waiting for bot to start..."
+    sleep 5
+    
+    echo "=== First 20 lines of new bot.log ==="
+    head -20 bot.log
 EOF
 
 echo "=== Deployment completed! ==="

@@ -64,6 +64,9 @@ class XBitAPI:
                                     if os.path.exists(path) and os.path.getsize(path) > 1024:
                                         print(f"Successfully downloaded {vid_id} using XBit API")
                                         return path
+                                    else:
+                                        print(f"Downloaded file is too small for {vid_id}, cleaning up...")
+                                        os.remove(path) if os.path.exists(path) else None
                                 else:
                                     error_body = await response.text()
                                     print(f"XBit direct URL download failed! Status: {response.status}, Body: {error_body}, URL: {direct_url}")
@@ -83,6 +86,9 @@ class XBitAPI:
                             if os.path.exists(path) and os.path.getsize(path) > 1024:
                                 print(f"Successfully downloaded {vid_id} using ARU API")
                                 return path
+                            else:
+                                print(f"Downloaded file is too small for {vid_id}, cleaning up...")
+                                os.remove(path) if os.path.exists(path) else None
             except Exception as e:
                 print(f"Error downloading from ARU API: {e}")
         
