@@ -64,6 +64,9 @@ class XBitAPI:
                                     if os.path.exists(path) and os.path.getsize(path) > 1024:
                                         print(f"Successfully downloaded {vid_id} using XBit API")
                                         return path
+                                else:
+                                    error_body = await response.text()
+                                    print(f"XBit direct URL download failed! Status: {response.status}, Body: {error_body}, URL: {direct_url}")
             except Exception as e:
                 print(f"Error downloading from XBit API: {e}")
         
