@@ -26,7 +26,7 @@ def playlist_to_queue(chat_id: int, tracks: list, user_id: int = None) -> str:
 async def background_download(file: Media | Track, video: bool):
     try:
         if not file.file_path:
-            fname = f"downloads/{file.id}.{'mp4' if video else 'webm'}"
+            fname = f"downloads/{file.id}.{'mp4' if video else 'mp3'}"
             if Path(fname).exists():
                 file.file_path = fname
             else:
@@ -186,7 +186,7 @@ async def play_hndlr(
             return
 
     if not file.file_path:
-        fname = f"downloads/{file.id}.{'mp4' if video else 'webm'}"
+        fname = f"downloads/{file.id}.{'mp4' if video else 'mp3'}"
         if Path(fname).exists():
             file.file_path = fname
         else:
