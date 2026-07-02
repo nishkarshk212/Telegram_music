@@ -5,6 +5,7 @@
 
 from ._admins import admin_check, can_manage_vc, can_skip, is_admin, reload_admins
 from ._dataclass import Media, Track
+from ._dynamic_buttons import dynamic_buttons
 from ._exec import format_exception, meval
 from ._inline import Inline
 from ._queue import Queue

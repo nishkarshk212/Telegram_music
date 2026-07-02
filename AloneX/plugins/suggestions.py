@@ -13,10 +13,10 @@ from AloneX import app, db, lang, queue, yt, xbit
 from AloneX.helpers import Track, buttons
 
 
-# ── Colour palette for suggestion buttons (green/teal shades) ───────────────
+# ── Colour palette for suggestion buttons (vibrant rainbow colors) ───────────────
 # Pyrogram InlineKeyboardButton supports callback_data only; visual colour
 # is achieved via emoji prefixes so they look vibrant in Telegram.
-_BTN_EMOJIS = ["🟢", "💚", "🍀", "✅", "🌿"]
+_BTN_EMOJIS = ["🔴", "🟠", "�", "�🟢", "�", "🟣", "🟤", "⚪", "�", "💎", "✨", "�"]
 
 
 def _clean_title(title: str) -> str:

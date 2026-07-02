@@ -11,7 +11,7 @@ from pyrogram.types import InputMediaPhoto, Message
 from pytgcalls import PyTgCalls, exceptions, types 
 from pytgcalls.pytgcalls_session import PyTgCallsSession 
 
-from AloneX.helpers import Media, Track, buttons, thumb 
+from AloneX.helpers import Media, Track, buttons, dynamic_buttons, thumb 
 
 
 class TgCall(PyTgCalls): 
@@ -39,10 +39,6 @@ class TgCall(PyTgCalls):
         except: 
             pass 
 
-        try: 
-            await client.leave_call(chat_id, close=False) 
-        except: 
-            pass 
 
 
     async def play_media( 
@@ -118,7 +114,9 @@ class TgCall(PyTgCalls):
                             has_spoiler=True, 
                         ), 
                         reply_markup=keyboard, 
-                    ) 
+                    )
+                    # Start dynamic color cycling for this playing message
+                    await dynamic_buttons.start_color_cycle(chat_id, media.message_id, keyboard)
                 except MessageIdInvalid: 
                     media.message_id = (await app.send_photo( 
                         chat_id=chat_id, 
@@ -126,7 +124,9 @@ class TgCall(PyTgCalls):
                         caption=text, 
                         reply_markup=keyboard, 
                         has_spoiler=True, 
-                    )).id 
+                    )).id
+                    # Start dynamic color cycling for this playing message
+                    await dynamic_buttons.start_color_cycle(chat_id, media.message_id, keyboard) 
         except FileNotFoundError as e: 
             logger.error(f"[play_media] FileNotFoundError: {e}, file: {media.file_path}") 
             key = buttons.ikm([
@@ -256,13 +256,6 @@ class TgCall(PyTgCalls):
 
         media.message_id = msg.id 
         await self.play_media(chat_id, msg, media) 
-        # Send related-song suggestions in background
-        import asyncio as _asyncio
-        try:
-            from AloneX.plugins.suggestions import send_suggestions
-            _asyncio.create_task(send_suggestions(chat_id, media.title))
-        except Exception:
-            pass 
 
 
     async def ping(self) -> float: 
