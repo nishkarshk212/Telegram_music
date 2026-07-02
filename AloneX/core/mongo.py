@@ -359,6 +359,9 @@ class MongoDB:
             upsert=True,
         )
 
+    async def delete_media_cache(self, vid_id: str) -> None:
+        await self.mediadb.delete_one({"_id": vid_id})
+
     # QUERY CACHE
     async def get_query_cache(self, query: str) -> dict | None:
         return await self.querydb.find_one({"_id": query.lower().strip()})
