@@ -273,6 +273,8 @@ class TgCall(PyTgCalls):
                         if media and media.message_id:
                             try:
                                 await app.delete_messages(chat_id, media.message_id)
+                            except:
+                                pass
                     await self.play_next(chat_id)
             elif isinstance(update, types.ChatUpdate):
                 logger.info(f"[pytgcalls] Chat update: {update}")
