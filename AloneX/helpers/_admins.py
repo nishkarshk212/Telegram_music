@@ -69,7 +69,7 @@ def can_manage_vc(func):
 def can_skip(func):
     @wraps(func)
     async def wrapper(_, update: types.Message | types.CallbackQuery, *args, **kwargs):
-        from AloneX import queue
+        from AloneX import queue, logger
 
         chat_id = (
             update.chat.id
@@ -78,26 +78,39 @@ def can_skip(func):
         )
         user_id = update.from_user.id
 
+        logger.info(f"[can_skip] Checking skip permissions for user {user_id} in chat {chat_id}")
+
         if user_id in app.sudoers:
+            logger.info(f"[can_skip] User {user_id} is sudoer, allowing skip")
             return await func(_, update, *args, **kwargs)
 
         if await db.is_auth(chat_id, user_id):
+            logger.info(f"[can_skip] User {user_id} is authorized in chat {chat_id}, allowing skip")
             return await func(_, update, *args, **kwargs)
 
         admins = await db.get_admins(chat_id)
         if user_id in admins:
+            logger.info(f"[can_skip] User {user_id} is admin in chat {chat_id}, allowing skip")
             return await func(_, update, *args, **kwargs)
 
         # If skip_mode is True (ON), only admins and the user who queued the song can skip.
         # If False (OFF), everyone can skip.
-        if not await db.get_skip_mode(chat_id):
+        skip_mode = await db.get_skip_mode(chat_id)
+        logger.info(f"[can_skip] skip_mode for chat {chat_id}: {skip_mode}")
+        
+        if not skip_mode:
+            logger.info(f"[can_skip] skip_mode is OFF, allowing skip for user {user_id}")
             return await func(_, update, *args, **kwargs)
 
         # When skip_mode is ON, check if the user queued the current song
         current = queue.get_current(chat_id)
+        logger.info(f"[can_skip] Current song in queue: {getattr(current, 'title', 'None')}, queued by: {getattr(current, 'user_id', 'None')}")
+        
         if current and current.user_id == user_id:
+            logger.info(f"[can_skip] User {user_id} queued the current song, allowing skip")
             return await func(_, update, *args, **kwargs)
 
+        logger.info(f"[can_skip] Denying skip for user {user_id} in chat {chat_id}")
         if isinstance(update, types.Message):
             return await update.reply_text(update.lang["user_no_perms"])
         else:
