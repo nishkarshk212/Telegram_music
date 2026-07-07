@@ -88,9 +88,14 @@ def can_skip(func):
         if user_id in admins:
             return await func(_, update, *args, **kwargs)
 
-        # If skip_mode is True (ON), only admins can skip.
+        # If skip_mode is True (ON), only admins and the user who queued the song can skip.
         # If False (OFF), everyone can skip.
         if not await db.get_skip_mode(chat_id):
+            return await func(_, update, *args, **kwargs)
+
+        # When skip_mode is ON, check if the user queued the current song
+        current = queue.get_current(chat_id)
+        if current and current.user_id == user_id:
             return await func(_, update, *args, **kwargs)
 
         if isinstance(update, types.Message):
