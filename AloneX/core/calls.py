@@ -183,6 +183,10 @@ class TgCall(PyTgCalls):
     async def play_next(self, chat_id: int) -> None: 
         from AloneX import app, config, db, lang, queue, yt, xbit 
         media = queue.get_next(chat_id) 
+        
+        if not media: 
+            return await self.stop(chat_id) 
+            
         try: 
             if media.message_id: 
                 await app.delete_messages( 
@@ -193,9 +197,6 @@ class TgCall(PyTgCalls):
                 media.message_id = 0 
         except: 
             pass 
-
-        if not media: 
-            return await self.stop(chat_id) 
 
         _lang = await lang.get_lang(chat_id) 
         msg = await app.send_message(chat_id=chat_id, text=_lang["play_next"]) 
