@@ -31,13 +31,17 @@ class TgCall(PyTgCalls):
         return await client.resume(chat_id) 
 
     async def stop(self, chat_id: int) -> None: 
-        from AloneX import db, queue 
+        from AloneX import db, queue, logger 
         client = await db.get_assistant(chat_id) 
         try: 
             queue.clear(chat_id) 
             await db.remove_call(chat_id) 
-        except: 
-            pass 
+        except Exception as e: 
+            logger.error(f"[stop] Error clearing queue/db: {e}") 
+        try:
+            await client.leave_call(chat_id)
+        except Exception as e:
+            logger.error(f"[stop] Error leaving call: {e}")
 
     async def play_media( 
         self, 
@@ -181,13 +185,17 @@ class TgCall(PyTgCalls):
 
 
     async def play_next(self, chat_id: int) -> None: 
-        from AloneX import app, config, db, lang, queue, yt, xbit 
+        from AloneX import app, config, db, lang, queue, yt, xbit, logger
+        logger.info(f"[play_next] Called for chat {chat_id}")
         media = queue.get_next(chat_id) 
+        logger.info(f"[play_next] Got media from queue: {getattr(media, 'title', 'None')}, media is None: {media is None}")
         
         if not media: 
+            logger.info("[play_next] No media, calling stop")
             return await self.stop(chat_id) 
             
         try: 
+            logger.info(f"[play_next] Trying to delete message_id: {getattr(media, 'message_id', None)}")
             if media.message_id: 
                 await app.delete_messages( 
                     chat_id=chat_id, 
@@ -195,23 +203,27 @@ class TgCall(PyTgCalls):
                     revoke=True, 
                 ) 
                 media.message_id = 0 
-        except: 
-            pass 
+        except Exception as e: 
+            logger.error(f"[play_next] Error deleting message: {type(e).__name__} - {e}")
 
         _lang = await lang.get_lang(chat_id) 
         msg = await app.send_message(chat_id=chat_id, text=_lang["play_next"]) 
+        logger.info(f"[play_next] Sent play_next message, id {msg.id}")
         if not media.file_path: 
-            # Check cache 
+            logger.info("[play_next] media.file_path is empty, checking cache")
             cache = await db.get_media_cache(media.id) 
             if cache: 
+                logger.info(f"[play_next] Got cache: {cache}")
                 media.file_path = cache.get("video_url") if media.video else cache.get("audio_url") 
             
             if not media.file_path: 
+                logger.info(f"[play_next] No cache, downloading with xbit first, media id {getattr(media, 'id', 'N/A')}")
                 media.file_path = await xbit.download(media.id, video=media.video) 
                 if not media.file_path: 
+                    logger.info("[play_next] xbit failed, trying yt")
                     media.file_path = await yt.download(media.id, video=media.video) 
-                # Save to cache if it's a URL 
                 if media.file_path and (media.file_path.startswith("http") or media.file_path.startswith("https")): 
+                    logger.info(f"[play_next] Saving to cache: {media.file_path}")
                     cache_data = { 
                         "title": media.title, 
                         "duration": media.duration, 
@@ -221,6 +233,7 @@ class TgCall(PyTgCalls):
                     await db.save_media_cache(media.id, cache_data) 
             
             if not media.file_path: 
+                logger.error("[play_next] Still no file_path, calling stop")
                 await self.stop(chat_id) 
                 key = buttons.ikm([
                     [
@@ -233,10 +246,11 @@ class TgCall(PyTgCalls):
                     reply_markup=key
                 ) 
             
-            # Verify local file 
             from pathlib import Path 
             if media.file_path and not (media.file_path.startswith("http") or media.file_path.startswith("https")): 
+                logger.info(f"[play_next] Checking local file exists: {media.file_path}")
                 if not Path(media.file_path).exists() or Path(media.file_path).stat().st_size == 0: 
+                    logger.error(f"[play_next] Local file missing or empty: {media.file_path}")
                     await self.stop(chat_id) 
                     key = buttons.ikm([
                         [
@@ -250,6 +264,7 @@ class TgCall(PyTgCalls):
                     ) 
 
         media.message_id = msg.id 
+        logger.info(f"[play_next] Calling play_media for chat {chat_id}")
         await self.play_media(chat_id, msg, media) 
 
 
