@@ -3,6 +3,7 @@
 # This file is part of AloneXMusic
 
 
+import asyncio
 from pyrogram import filters, types
 
 from AloneX import anon, app, db, lang, logger
@@ -21,7 +22,12 @@ async def _skip(_, m: types.Message):
     logger.info(f"[skip] Calling play_next for chat {m.chat.id}")
     try:
         await anon.play_next(m.chat.id)
-        await m.reply_text(m.lang["play_skipped"].format(m.from_user.mention))
+        msg = await m.reply_text(m.lang["play_skipped"].format(m.from_user.mention))
+        await asyncio.sleep(5)
+        try:
+            await msg.delete()
+        except:
+            pass
     except Exception as e:
         logger.error(f"[skip] Error during skip: {type(e).__name__} - {e}")
         import traceback
