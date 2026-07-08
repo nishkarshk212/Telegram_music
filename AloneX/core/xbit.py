@@ -54,14 +54,15 @@ class XBitAPI:
         
         # Try XBit first with direct URL - download the file
         if self.xbit_api_key and self.xbit_base_url:
-            for retry in range(4):  # Try up to 4 attempts to get a fresh URL
+            for retry in range(6):  # Try up to 6 attempts to get a fresh URL
                 try:
+                    logger.info(f"XBit download attempt {retry+1} for {vid_id}")
                     info = await self.get_info(vid_id)
                     if info:
                         url_key = 'video_url' if video else 'audio_url'
                         if url_key in info and info[url_key]:
                             direct_url = info[url_key]
-                            logger.info(f"Successfully got direct URL for {vid_id} (attempt {retry+1}), downloading...")
+                            logger.info(f"Got URL, starting download immediately for {vid_id}")
                             headers = {}
                             if self.xbit_api_key and "xbitcode.com" in direct_url:
                                 headers["x-api-key"] = self.xbit_api_key
@@ -81,8 +82,7 @@ class XBitAPI:
                                     elif response.status == 410:
                                             error_body = await response.text()
                                             if "URL_EXPIRED" in error_body:
-                                                logger.warning(f"XBit URL expired, retrying...")
-                                                await asyncio.sleep(0.5)  # Small delay to let API generate a fresh URL
+                                                logger.warning(f"XBit URL expired on attempt {retry+1}, retrying immediately...")
                                                 continue
                                             else:
                                                 logger.error(f"XBit direct URL download failed! Status: {response.status}, Body: {error_body}, URL: {direct_url}")
@@ -92,7 +92,7 @@ class XBitAPI:
                                         logger.error(f"XBit direct URL download failed! Status: {response.status}, Body: {error_body}, URL: {direct_url}")
                                         break
                 except Exception as e:
-                    logger.error(f"Error downloading from XBit API: {e}")
+                    logger.error(f"Error downloading from XBit API on attempt {retry+1}: {e}")
                     if os.path.exists(path):
                         try:
                             os.remove(path)
