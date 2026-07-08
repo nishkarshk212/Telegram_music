@@ -53,39 +53,49 @@ class XBitAPI:
         
         # Try XBit first with direct URL - download the file
         if self.xbit_api_key and self.xbit_base_url:
-            try:
-                info = await self.get_info(vid_id)
-                if info:
-                    url_key = 'video_url' if video else 'audio_url'
-                    if url_key in info and info[url_key]:
-                        direct_url = info[url_key]
-                        logger.info(f"Successfully got direct URL for {vid_id} using XBit API, downloading...")
-                        headers = {}
-                        if self.xbit_api_key and "xbitcode.com" in direct_url:
-                            headers["x-api-key"] = self.xbit_api_key
-                        async with aiohttp.ClientSession() as session:
-                            async with session.get(direct_url, headers=headers, timeout=aiohttp.ClientTimeout(total=600), ssl=self.ssl_context) as response:
-                                if response.status == 200:
-                                    with open(path, "wb") as f:
-                                        async for chunk in response.content.iter_chunked(1024 * 1024):
-                                            f.write(chunk)
-                                    if os.path.exists(path) and os.path.getsize(path) > 1024:
-                                        logger.info(f"Successfully downloaded {vid_id} using XBit API")
-                                        return path
+            for retry in range(2):  # Try up to 2 attempts to avoid infinite retries
+                try:
+                    info = await self.get_info(vid_id)
+                    if info:
+                        url_key = 'video_url' if video else 'audio_url'
+                        if url_key in info and info[url_key]:
+                            direct_url = info[url_key]
+                            logger.info(f"Successfully got direct URL for {vid_id} (attempt {retry+1}), downloading...")
+                            headers = {}
+                            if self.xbit_api_key and "xbitcode.com" in direct_url:
+                                headers["x-api-key"] = self.xbit_api_key
+                            async with aiohttp.ClientSession() as session:
+                                async with session.get(direct_url, headers=headers, timeout=aiohttp.ClientTimeout(total=600), ssl=self.ssl_context) as response:
+                                    if response.status == 200:
+                                        with open(path, "wb") as f:
+                                            async for chunk in response.content.iter_chunked(1024 * 1024):
+                                                f.write(chunk)
+                                        if os.path.exists(path) and os.path.getsize(path) > 1024:
+                                            logger.info(f"Successfully downloaded {vid_id} using XBit API")
+                                            return path
+                                        else:
+                                            logger.error(f"Downloaded file is too small for {vid_id}, cleaning up...")
+                                            if os.path.exists(path):
+                                                os.remove(path)
+                                    elif response.status == 410:
+                                            error_body = await response.text()
+                                            if "URL_EXPIRED" in error_body:
+                                                logger.warning(f"XBit URL expired, retrying...")
+                                                continue
+                                            else:
+                                                logger.error(f"XBit direct URL download failed! Status: {response.status}, Body: {error_body}, URL: {direct_url}")
+                                                break
                                     else:
-                                        logger.error(f"Downloaded file is too small for {vid_id}, cleaning up...")
-                                        if os.path.exists(path):
-                                            os.remove(path)
-                                else:
-                                    error_body = await response.text()
-                                    logger.error(f"XBit direct URL download failed! Status: {response.status}, Body: {error_body}, URL: {direct_url}")
-            except Exception as e:
-                logger.error(f"Error downloading from XBit API: {e}")
-                if os.path.exists(path):
-                    try:
-                        os.remove(path)
-                    except:
-                        pass
+                                        error_body = await response.text()
+                                        logger.error(f"XBit direct URL download failed! Status: {response.status}, Body: {error_body}, URL: {direct_url}")
+                                        break
+                except Exception as e:
+                    logger.error(f"Error downloading from XBit API: {e}")
+                    if os.path.exists(path):
+                        try:
+                            os.remove(path)
+                        except:
+                            pass
         
         # Fallback to ARU
         if self.aru_api_key and self.aru_base_url:
