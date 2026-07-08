@@ -37,7 +37,7 @@ class XBitAPI:
             }
             try:
                 session = await self._get_session()
-                async with session.get(endpoint, headers=headers, timeout=aiohttp.ClientTimeout(total=10), ssl=self.ssl_context) as response:
+                async with session.get(endpoint, headers=headers, timeout=aiohttp.ClientTimeout(total=5), ssl=self.ssl_context) as response:
                     if response.status == 200:
                         data = await response.json()
                         if data.get("status") == "success":
@@ -64,7 +64,8 @@ class XBitAPI:
         
         # Try XBit first with direct URL - download the file
         if self.xbit_api_key and self.xbit_base_url:
-            for retry in range(10):  # Try up to 10 attempts to get a fresh URL
+            session = await self._get_session()
+            for retry in range(20):  # Try up to 20 attempts to get a fresh URL
                 try:
                     logger.info(f"XBit download attempt {retry+1} for {vid_id}")
                     info = await self.get_info(vid_id)
@@ -77,8 +78,7 @@ class XBitAPI:
                             if self.xbit_api_key and "xbitcode.com" in direct_url:
                                 headers["x-api-key"] = self.xbit_api_key
                             
-                            # Get session and start download immediately
-                            session = await self._get_session()
+                            # Start download immediately
                             async with session.get(direct_url, headers=headers, timeout=aiohttp.ClientTimeout(total=600), ssl=self.ssl_context) as response:
                                 if response.status == 200:
                                     with open(path, "wb") as f:
