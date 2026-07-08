@@ -2,6 +2,7 @@
 import aiohttp
 import os
 import ssl
+import asyncio
 from AloneX import logger
 
 class XBitAPI:
@@ -53,7 +54,7 @@ class XBitAPI:
         
         # Try XBit first with direct URL - download the file
         if self.xbit_api_key and self.xbit_base_url:
-            for retry in range(2):  # Try up to 2 attempts to avoid infinite retries
+            for retry in range(4):  # Try up to 4 attempts to get a fresh URL
                 try:
                     info = await self.get_info(vid_id)
                     if info:
@@ -81,6 +82,7 @@ class XBitAPI:
                                             error_body = await response.text()
                                             if "URL_EXPIRED" in error_body:
                                                 logger.warning(f"XBit URL expired, retrying...")
+                                                await asyncio.sleep(0.5)  # Small delay to let API generate a fresh URL
                                                 continue
                                             else:
                                                 logger.error(f"XBit direct URL download failed! Status: {response.status}, Body: {error_body}, URL: {direct_url}")
