@@ -2,7 +2,6 @@
 import aiohttp
 import os
 import ssl
-import asyncio
 from AloneX import logger
 
 class XBitAPI:
@@ -16,6 +15,17 @@ class XBitAPI:
         self.ssl_context = ssl.create_default_context()
         self.ssl_context.check_hostname = False
         self.ssl_context.verify_mode = ssl.CERT_NONE
+        # Reuse a single session for all requests to speed things up
+        self.session = None
+
+    async def _get_session(self):
+        if self.session is None or self.session.closed:
+            self.session = aiohttp.ClientSession()
+        return self.session
+
+    async def close(self):
+        if self.session and not self.session.closed:
+            await self.session.close()
 
     async def get_info(self, vid_id: str):
         # Try XBit first (working!)
@@ -26,12 +36,12 @@ class XBitAPI:
                 'Content-Type': 'application/json'
             }
             try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(endpoint, headers=headers, timeout=aiohttp.ClientTimeout(total=20), ssl=self.ssl_context) as response:
-                        if response.status == 200:
-                            data = await response.json()
-                            if data.get("status") == "success":
-                                return data
+                session = await self._get_session()
+                async with session.get(endpoint, headers=headers, timeout=aiohttp.ClientTimeout(total=10), ssl=self.ssl_context) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get("status") == "success":
+                            return data
             except Exception as e:
                 logger.error(f"Error fetching from XBit API: {e}")
         
@@ -54,7 +64,7 @@ class XBitAPI:
         
         # Try XBit first with direct URL - download the file
         if self.xbit_api_key and self.xbit_base_url:
-            for retry in range(6):  # Try up to 6 attempts to get a fresh URL
+            for retry in range(10):  # Try up to 10 attempts to get a fresh URL
                 try:
                     logger.info(f"XBit download attempt {retry+1} for {vid_id}")
                     info = await self.get_info(vid_id)
@@ -62,37 +72,41 @@ class XBitAPI:
                         url_key = 'video_url' if video else 'audio_url'
                         if url_key in info and info[url_key]:
                             direct_url = info[url_key]
-                            logger.info(f"Got URL, starting download immediately for {vid_id}")
+                            logger.info(f"Got URL, starting download NOW for {vid_id}")
                             headers = {}
                             if self.xbit_api_key and "xbitcode.com" in direct_url:
                                 headers["x-api-key"] = self.xbit_api_key
-                            async with aiohttp.ClientSession() as session:
-                                async with session.get(direct_url, headers=headers, timeout=aiohttp.ClientTimeout(total=600), ssl=self.ssl_context) as response:
-                                    if response.status == 200:
-                                        with open(path, "wb") as f:
-                                            async for chunk in response.content.iter_chunked(1024 * 1024):
-                                                f.write(chunk)
-                                        if os.path.exists(path) and os.path.getsize(path) > 1024:
-                                            logger.info(f"Successfully downloaded {vid_id} using XBit API")
-                                            return path
-                                        else:
-                                            logger.error(f"Downloaded file is too small for {vid_id}, cleaning up...")
-                                            if os.path.exists(path):
-                                                os.remove(path)
-                                    elif response.status == 410:
-                                            error_body = await response.text()
-                                            if "URL_EXPIRED" in error_body:
-                                                logger.warning(f"XBit URL expired on attempt {retry+1}, retrying immediately...")
-                                                continue
-                                            else:
-                                                logger.error(f"XBit direct URL download failed! Status: {response.status}, Body: {error_body}, URL: {direct_url}")
-                                                break
+                            
+                            # Get session and start download immediately
+                            session = await self._get_session()
+                            async with session.get(direct_url, headers=headers, timeout=aiohttp.ClientTimeout(total=600), ssl=self.ssl_context) as response:
+                                if response.status == 200:
+                                    with open(path, "wb") as f:
+                                        async for chunk in response.content.iter_chunked(1024 * 1024):
+                                            f.write(chunk)
+                                    if os.path.exists(path) and os.path.getsize(path) > 1024:
+                                        logger.info(f"Successfully downloaded {vid_id} using XBit API")
+                                        return path
                                     else:
+                                        logger.error(f"Downloaded file is too small for {vid_id}, cleaning up...")
+                                        if os.path.exists(path):
+                                            os.remove(path)
+                                elif response.status == 410:
                                         error_body = await response.text()
-                                        logger.error(f"XBit direct URL download failed! Status: {response.status}, Body: {error_body}, URL: {direct_url}")
-                                        break
+                                        if "URL_EXPIRED" in error_body:
+                                            logger.warning(f"XBit URL expired on attempt {retry+1}, retrying NOW...")
+                                            continue
+                                        else:
+                                            logger.error(f"XBit direct URL download failed! Status: {response.status}, Body: {error_body}, URL: {direct_url}")
+                                            break
+                                else:
+                                    error_body = await response.text()
+                                    logger.error(f"XBit direct URL download failed! Status: {response.status}, Body: {error_body}, URL: {direct_url}")
+                                    break
                 except Exception as e:
                     logger.error(f"Error downloading from XBit API on attempt {retry+1}: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
                     if os.path.exists(path):
                         try:
                             os.remove(path)
@@ -104,19 +118,19 @@ class XBitAPI:
             direct_url = f"{self.aru_base_url}/download?url={youtube_url}&type={'video' if video else 'audio'}&api_key={self.aru_api_key}"
             try:
                 logger.info(f"Trying to download {vid_id} using ARU API")
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(direct_url, timeout=aiohttp.ClientTimeout(total=600), ssl=self.ssl_context) as response:
-                        if response.status == 200:
-                            with open(path, "wb") as f:
-                                async for chunk in response.content.iter_chunked(1024 * 1024):
-                                    f.write(chunk)
-                            if os.path.exists(path) and os.path.getsize(path) > 1024:
-                                logger.info(f"Successfully downloaded {vid_id} using ARU API")
-                                return path
-                            else:
-                                logger.error(f"Downloaded file is too small for {vid_id}, cleaning up...")
-                                if os.path.exists(path):
-                                    os.remove(path)
+                session = await self._get_session()
+                async with session.get(direct_url, timeout=aiohttp.ClientTimeout(total=600), ssl=self.ssl_context) as response:
+                    if response.status == 200:
+                        with open(path, "wb") as f:
+                            async for chunk in response.content.iter_chunked(1024 * 1024):
+                                f.write(chunk)
+                        if os.path.exists(path) and os.path.getsize(path) > 1024:
+                            logger.info(f"Successfully downloaded {vid_id} using ARU API")
+                            return path
+                        else:
+                            logger.error(f"Downloaded file is too small for {vid_id}, cleaning up...")
+                            if os.path.exists(path):
+                                os.remove(path)
             except Exception as e:
                 logger.error(f"Error downloading from ARU API: {e}")
                 if os.path.exists(path):
@@ -125,7 +139,7 @@ class XBitAPI:
                     except:
                         pass
         
-        # Fallback to yt-dlp
+        # Fallback to YouTube
         logger.info(f"Falling back to YouTube download for {vid_id}...")
         from AloneX import yt
         try:
