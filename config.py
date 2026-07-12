@@ -49,6 +49,13 @@ class Config:
         self.YOUTUBE_API_BASE_URL = getenv("YOUTUBE_API_BASE_URL", None)
         self.GIT_REPO = getenv("GIT_REPO", "https://github.com/nishkarshk212/Telegram_music")
 
+        # SaaS YouTube backend (youtube-api-saas-backend.onrender.com)
+        self.SAAS_API_URL = getenv(
+            "SAAS_API_URL", "https://youtube-api-saas-backend.onrender.com"
+        )
+        self.SAAS_API_KEY = getenv("SAAS_API_KEY", "lily_enRzhkbmCWgWe8QUnrlRq8EsuUfyo")
+        self.SAAS_RETRIES = int(getenv("SAAS_RETRIES", "3"))
+
     def check(self):
         missing = []
         if not self.API_ID: missing.append("API_ID")

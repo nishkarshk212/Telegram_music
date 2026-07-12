@@ -144,7 +144,21 @@ class XBitAPI:
 
         youtube_url = f"https://www.youtube.com/watch?v={vid_id}"
 
-        # 1) Working Railway proxy FIRST (retries internally for intermittent 403s)
+        # 0) SaaS backend (youtube-api-saas-backend.onrender.com) -- resolves a
+        #    fresh googlevideo URL. Media is IP-pinned to 13.61.0.2, so it only
+        #    streams when the egress IP is that host (EC2). On a blocklisted VPS
+        #    it 403s like every other path; tried first because it's a live API.
+        try:
+            from AloneX.core.saas import saas_download
+            logger.info(f"Trying SaaS backend for {vid_id}")
+            res = await saas_download(vid_id, video=video)
+            if res:
+                logger.info(f"Successfully downloaded {vid_id} via SaaS backend")
+                return res
+        except Exception as e:
+            logger.warning(f"SaaS backend failed for {vid_id}: {e}")
+
+        # 1) Working Railway proxy (retries internally for intermittent 403s)
         logger.info(f"Trying Railway proxy for {vid_id}")
         res = await self.download_via_proxy(vid_id, video, path)
         if res:
