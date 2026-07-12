@@ -3,7 +3,9 @@ import aiohttp
 import os
 import ssl
 import asyncio
+import json
 from AloneX import logger
+
 
 class XBitAPI:
     def __init__(self):
@@ -12,6 +14,9 @@ class XBitAPI:
         self.xbit_base_url = config.XBIT_API_URL
         self.aru_api_key = config.ARU_API_KEY
         self.aru_base_url = config.ARU_API_URL
+        # Working Railway proxy (youtube-api-music-production-824b.up.railway.app)
+        self.yt_api_key = config.YOUTUBE_API_KEY
+        self.yt_api_base = config.YOUTUBE_API_BASE_URL
         # Create SSL context that ignores certificate errors
         self.ssl_context = ssl.create_default_context()
         self.ssl_context.check_hostname = False
@@ -21,7 +26,6 @@ class XBitAPI:
 
     async def _get_session(self):
         if self.session is None or self.session.closed:
-            # Use a connector with more connections
             connector = aiohttp.TCPConnector(limit=50)
             self.session = aiohttp.ClientSession(connector=connector)
         return self.session
@@ -29,6 +33,58 @@ class XBitAPI:
     async def close(self):
         if self.session and not self.session.closed:
             await self.session.close()
+
+    # ------------------------------------------------------------------
+    # Working Railway proxy (824b.up.railway.app) -- primary path
+    # Response: {"success":true,"download":{"best_audio_url":...,"best_video_url":...}}
+    # Auth: X-API-Key header. Always GET the googlevideo URL (HEAD -> 405).
+    # ------------------------------------------------------------------
+    async def download_via_proxy(self, vid_id: str, video: bool, path: str):
+        if not (self.yt_api_key and self.yt_api_base):
+            return None
+        session = await self._get_session()
+        endpoint = f"{self.yt_api_base}/download?id={vid_id}&type={'video' if video else 'audio'}"
+        headers = {"X-API-Key": self.yt_api_key, "Content-Type": "application/json"}
+        try:
+            async with session.get(
+                endpoint, headers=headers,
+                timeout=aiohttp.ClientTimeout(total=40), ssl=self.ssl_context,
+            ) as resp:
+                if resp.status != 200:
+                    logger.error(f"Proxy {resp.status} for {vid_id}")
+                    return None
+                data = await resp.json()
+                if not data.get("success"):
+                    logger.error(f"Proxy success=false for {vid_id}: {str(data)[:200]}")
+                    return None
+                dl = data.get("download", {})
+                url = dl.get("best_audio_url") or dl.get("best_video_url")
+                if not url:
+                    logger.error(f"Proxy returned no URL for {vid_id}")
+                    return None
+                logger.info(f"Proxy URL for {vid_id}, downloading via GET")
+                async with session.get(
+                    url, timeout=aiohttp.ClientTimeout(total=600), ssl=self.ssl_context,
+                ) as r:
+                    if r.status == 200:
+                        with open(path, "wb") as f:
+                            async for chunk in r.content.iter_chunked(1024 * 1024):
+                                f.write(chunk)
+                        if os.path.exists(path) and os.path.getsize(path) > 1024:
+                            return path
+                        if os.path.exists(path):
+                            os.remove(path)
+                    else:
+                        logger.error(f"Proxy stream status {r.status} for {vid_id}")
+                return None
+        except Exception as e:
+            logger.error(f"Proxy download error for {vid_id}: {e}")
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                except Exception:
+                    pass
+            return None
 
     async def _get_single_info(self, session, vid_id):
         try:
@@ -47,7 +103,7 @@ class XBitAPI:
         return None
 
     async def get_info(self, vid_id: str):
-        # Try XBit first (working!)
+        # Try XBit first
         if self.xbit_api_key and self.xbit_base_url:
             session = await self._get_session()
             # Make 5 concurrent requests to get_info, return the first successful one
@@ -76,8 +132,15 @@ class XBitAPI:
             return path
 
         youtube_url = f"https://www.youtube.com/watch?v={vid_id}"
-        
-        # Try XBit first with direct URL - download the file
+
+        # 1) Working Railway proxy FIRST
+        logger.info(f"Trying Railway proxy for {vid_id}")
+        res = await self.download_via_proxy(vid_id, video, path)
+        if res:
+            logger.info(f"Successfully downloaded {vid_id} via Railway proxy")
+            return res
+
+        # 2) XBit (may be down)
         if self.xbit_api_key and self.xbit_base_url:
             session = await self._get_session()
             for attempt in range(20):  # Try up to 20 attempts to get a fresh URL
@@ -92,7 +155,7 @@ class XBitAPI:
                             headers = {}
                             if self.xbit_api_key and "xbitcode.com" in direct_url:
                                 headers["x-api-key"] = self.xbit_api_key
-                            
+
                             # Start download immediately
                             async with session.get(direct_url, headers=headers, timeout=aiohttp.ClientTimeout(total=600), ssl=self.ssl_context) as response:
                                 if response.status == 200:
@@ -127,8 +190,8 @@ class XBitAPI:
                             os.remove(path)
                         except:
                             pass
-        
-        # Fallback to ARU
+
+        # 3) Fallback to ARU
         if self.aru_api_key and self.aru_base_url:
             direct_url = f"{self.aru_base_url}/download?url={youtube_url}&type={'video' if video else 'audio'}&api_key={self.aru_api_key}"
             try:
@@ -153,8 +216,8 @@ class XBitAPI:
                         os.remove(path)
                     except:
                         pass
-        
-        # Fallback to YouTube
+
+        # 4) Fallback to YouTube (yt-dlp) -- usually bot-blocked
         logger.info(f"Falling back to YouTube download for {vid_id}...")
         from AloneX import yt
         try:
