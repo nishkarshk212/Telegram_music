@@ -38,53 +38,64 @@ class XBitAPI:
     # Working Railway proxy (824b.up.railway.app) -- primary path
     # Response: {"success":true,"download":{"best_audio_url":...,"best_video_url":...}}
     # Auth: X-API-Key header. Always GET the googlevideo URL (HEAD -> 405).
+    # The proxy backend is intermittent (some googlevideo URLs 403), so we
+    # retry the whole fetch+download a few times -- a fresh call often yields
+    # a working URL.
     # ------------------------------------------------------------------
-    async def download_via_proxy(self, vid_id: str, video: bool, path: str):
+    async def download_via_proxy(self, vid_id: str, video: bool, path: str, attempts: int = 3):
         if not (self.yt_api_key and self.yt_api_base):
             return None
         session = await self._get_session()
-        endpoint = f"{self.yt_api_base}/download?id={vid_id}&type={'video' if video else 'audio'}"
-        headers = {"X-API-Key": self.yt_api_key, "Content-Type": "application/json"}
-        try:
-            async with session.get(
-                endpoint, headers=headers,
-                timeout=aiohttp.ClientTimeout(total=40), ssl=self.ssl_context,
-            ) as resp:
-                if resp.status != 200:
-                    logger.error(f"Proxy {resp.status} for {vid_id}")
-                    return None
-                data = await resp.json()
-                if not data.get("success"):
-                    logger.error(f"Proxy success=false for {vid_id}: {str(data)[:200]}")
-                    return None
-                dl = data.get("download", {})
-                url = dl.get("best_audio_url") or dl.get("best_video_url")
-                if not url:
-                    logger.error(f"Proxy returned no URL for {vid_id}")
-                    return None
-                logger.info(f"Proxy URL for {vid_id}, downloading via GET")
+        for i in range(attempts):
+            try:
+                endpoint = f"{self.yt_api_base}/download?id={vid_id}&type={'video' if video else 'audio'}"
+                headers = {"X-API-Key": self.yt_api_key, "Content-Type": "application/json"}
                 async with session.get(
-                    url, timeout=aiohttp.ClientTimeout(total=600), ssl=self.ssl_context,
-                ) as r:
-                    if r.status == 200:
-                        with open(path, "wb") as f:
-                            async for chunk in r.content.iter_chunked(1024 * 1024):
-                                f.write(chunk)
-                        if os.path.exists(path) and os.path.getsize(path) > 1024:
-                            return path
+                    endpoint, headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=40), ssl=self.ssl_context,
+                ) as resp:
+                    if resp.status != 200:
+                        logger.warning(f"Proxy HTTP {resp.status} for {vid_id} (attempt {i+1})")
+                        continue
+                    data = await resp.json()
+                    if not data.get("success"):
+                        logger.warning(f"Proxy success=false for {vid_id}: {str(data)[:160]}")
+                        continue
+                    dl = data.get("download", {})
+                    url = dl.get("best_audio_url") or dl.get("best_video_url")
+                    if not url:
+                        logger.warning(f"Proxy returned no URL for {vid_id}")
+                        continue
+                    logger.info(f"Proxy URL for {vid_id}, downloading via GET (attempt {i+1})")
+                    try:
+                        async with session.get(
+                            url, timeout=aiohttp.ClientTimeout(total=600), ssl=self.ssl_context,
+                        ) as r:
+                            if r.status == 200:
+                                with open(path, "wb") as f:
+                                    async for chunk in r.content.iter_chunked(1024 * 1024):
+                                        f.write(chunk)
+                                if os.path.exists(path) and os.path.getsize(path) > 1024:
+                                    return path
+                                if os.path.exists(path):
+                                    os.remove(path)
+                            else:
+                                logger.warning(f"Proxy stream status {r.status} for {vid_id} (attempt {i+1})")
+                    except Exception as e:
+                        logger.warning(f"Proxy stream error for {vid_id} (attempt {i+1}): {e}")
                         if os.path.exists(path):
-                            os.remove(path)
-                    else:
-                        logger.error(f"Proxy stream status {r.status} for {vid_id}")
-                return None
-        except Exception as e:
-            logger.error(f"Proxy download error for {vid_id}: {e}")
-            if os.path.exists(path):
-                try:
-                    os.remove(path)
-                except Exception:
-                    pass
-            return None
+                            try:
+                                os.remove(path)
+                            except Exception:
+                                pass
+            except Exception as e:
+                logger.warning(f"Proxy download error for {vid_id} (attempt {i+1}): {e}")
+                if os.path.exists(path):
+                    try:
+                        os.remove(path)
+                    except Exception:
+                        pass
+        return None
 
     async def _get_single_info(self, session, vid_id):
         try:
@@ -133,17 +144,17 @@ class XBitAPI:
 
         youtube_url = f"https://www.youtube.com/watch?v={vid_id}"
 
-        # 1) Working Railway proxy FIRST
+        # 1) Working Railway proxy FIRST (retries internally for intermittent 403s)
         logger.info(f"Trying Railway proxy for {vid_id}")
         res = await self.download_via_proxy(vid_id, video, path)
         if res:
             logger.info(f"Successfully downloaded {vid_id} via Railway proxy")
             return res
 
-        # 2) XBit (may be down)
+        # 2) XBit (currently down -- only a couple of quick attempts, then bail)
         if self.xbit_api_key and self.xbit_base_url:
             session = await self._get_session()
-            for attempt in range(20):  # Try up to 20 attempts to get a fresh URL
+            for attempt in range(2):  # trimmed from 20: XBit is dead, don't stall
                 try:
                     logger.info(f"XBit download attempt {attempt+1} for {vid_id}")
                     info = await self.get_info(vid_id)
@@ -156,7 +167,6 @@ class XBitAPI:
                             if self.xbit_api_key and "xbitcode.com" in direct_url:
                                 headers["x-api-key"] = self.xbit_api_key
 
-                            # Start download immediately
                             async with session.get(direct_url, headers=headers, timeout=aiohttp.ClientTimeout(total=600), ssl=self.ssl_context) as response:
                                 if response.status == 200:
                                     with open(path, "wb") as f:
@@ -170,13 +180,13 @@ class XBitAPI:
                                         if os.path.exists(path):
                                             os.remove(path)
                                 elif response.status == 410:
-                                        error_body = await response.text()
-                                        if "URL_EXPIRED" in error_body:
-                                            logger.warning(f"XBit URL expired on attempt {attempt+1}, retrying NOW...")
-                                            continue
-                                        else:
-                                            logger.error(f"XBit direct URL download failed! Status: {response.status}, Body: {error_body}, URL: {direct_url}")
-                                            break
+                                    error_body = await response.text()
+                                    if "URL_EXPIRED" in error_body:
+                                        logger.warning(f"XBit URL expired on attempt {attempt+1}, retrying NOW...")
+                                        continue
+                                    else:
+                                        logger.error(f"XBit direct URL download failed! Status: {response.status}, Body: {error_body}, URL: {direct_url}")
+                                        break
                                 else:
                                     error_body = await response.text()
                                     logger.error(f"XBit direct URL download failed! Status: {response.status}, Body: {error_body}, URL: {direct_url}")
