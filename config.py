@@ -53,7 +53,7 @@ class Config:
         self.SAAS_API_URL = getenv(
             "SAAS_API_URL", "https://youtube-api-saas-backend.onrender.com"
         )
-        self.SAAS_API_KEY = getenv("SAAS_API_KEY", "lily_enRzhkbmCWgWe8QUnrlRq8EsuUfyo")
+        self.SAAS_API_KEY = getenv("SAAS_API_KEY", "lily_If5GeswRaQESaifBoBxMHlYZVqhJF1Y")
         self.SAAS_RETRIES = int(getenv("SAAS_RETRIES", "3"))
 
     def check(self):

@@ -26,7 +26,7 @@ from AloneX import config, logger
 class SaaSAPI:
     def __init__(self):
         self.base = getattr(config, "SAAS_API_URL", None) or "https://youtube-api-saas-backend.onrender.com"
-        self.key = getattr(config, "SAAS_API_KEY", None) or "lily_enRzhkbmCWgWe8QUnrlRq8EsuUfyo"
+        self.key = getattr(config, "SAAS_API_KEY", None) or "lily_If5GeswRaQESaifBoBxMHlYZVqhJF1Y"
         self.retries = int(getattr(config, "SAAS_RETRIES", 3))
         self.ssl_ctx = ssl.create_default_context()
         self.ssl_ctx.check_hostname = False
